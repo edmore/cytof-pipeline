@@ -11,12 +11,7 @@ log.info """\
     """
     .stripIndent()
 
-
 process Rscript {
-    input:
-
-    output:
-
     script:
     """
     Rscript "${params.reads}"
@@ -24,7 +19,6 @@ process Rscript {
 }
 
 workflow {
-
     Rscript()
 }
 

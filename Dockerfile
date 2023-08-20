@@ -15,6 +15,7 @@ RUN apt-get -y install temurin-17-jdk
 
 # install nextflow
 RUN wget -qO- https://get.nextflow.io | bash && chmod +x nextflow && cp ./nextflow /usr/local
+RUN apt-get -y install graphviz
 
 ENV PATH="${PATH}:/usr/local/"
 
@@ -22,10 +23,27 @@ ENV PATH="${PATH}:/usr/local/"
 RUN rm -f /tmp/nextflow
 
 # set desired nextflow version
-RUN export NXF_VER=23.04.1
+# RUN export NXF_VER=23.04.1
+
+# install Go
+RUN wget https://go.dev/dl/go1.21.0.linux-arm64.tar.gz
+
+RUN  rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.0.linux-arm64.tar.gz
+
+ENV PATH="${PATH}:/usr/local/go/bin"
+
+# cleanup
+RUN rm -f go1.21.0.linux-arm64.tar.gz
 
 COPY . ./
 
+RUN echo $(PATH)
+
+RUN go version
+
+RUN go build -o /tmp/main main.go
+
 RUN Rscript -e "install.packages(c('ggplot2', 'readxl', 'dplyr', 'RColorBrewer', 'viridis', 'cowplot', 'patchwork', 'tidyr', 'stringr', 'ggsci', 'magrittr', 'mblm', 'rstatix', 'psych', 'ggbeeswarm', 'umap', 'reshape2', 'pheatmap', 'plotly', 'spdep'), Ncpus = 6)"
 RUN Rscript -e "install.packages(c('ggpubr'), repos = 'https://cloud.r-project.org/', dependencies = TRUE)"
-ENTRYPOINT ["nextflow"]
+
+ENTRYPOINT [ "/tmp/main" ]

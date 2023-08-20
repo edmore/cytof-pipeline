@@ -1,7 +1,7 @@
 To build:
 
-`docker build -t edmore/r .`
+`docker build -t edmore/cytof-pipeline .`
 
 To run:
 
-`docker run -v `pwd`:/tmp edmore/r`
+`docker run -p 8081:8081 edmore/cytof-pipeline`
