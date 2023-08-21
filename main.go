@@ -22,15 +22,19 @@ func (dh *ServiceHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	io.Copy(&b, body)
 	log.Print(b.String())
 
-	// run pipeline
-	cmd := exec.Command("nextflow", "run", "/tmp/main.nf", "-ansi-log", "false")
-	var out strings.Builder
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		log.Fatalf(err.Error())
-	}
+	go func() {
+		// run pipeline
+		cmd := exec.Command("nextflow", "run", "/tmp/main.nf", "-ansi-log", "false", "--integration", b.String())
+		var out strings.Builder
+		cmd.Stdout = &out
+		if err := cmd.Run(); err != nil {
+			// run error workflow
+			log.Fatalf(err.Error())
+		}
+		log.Println(out.String())
+	}()
 
-	rw.Write([]byte(out.String()))
+	rw.Write([]byte("Accepted"))
 }
 
 func NewHandler() http.Handler {

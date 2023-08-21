@@ -8,6 +8,7 @@ log.info """\
     ===================================
     reads        : ${params.reads}
     outdir       : ${params.outdir}
+    integration : ${params.integration}
     """
     .stripIndent()
 
@@ -23,5 +24,5 @@ workflow {
 }
 
 workflow.onComplete {
-    log.info ( workflow.success ? "\nDone! Open the following report in your browser --> $params.outdir/IH_report_CyTOF_53.T1_Normalized.fcs.pdf\n" : "Oops .. something went wrong" )
+    log.info ( workflow.success ? "\nDone! your report can be found at this location --> $params.reads/IH_report_CyTOF_53.T1_Normalized.fcs.pdf\n Integration params --> $params.integration\n" : "Oops .. something went wrong" )
 }
