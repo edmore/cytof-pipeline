@@ -23,7 +23,7 @@ func (dh *ServiceHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	log.Print(b.String())
 
 	// run pipeline
-	cmd := exec.Command("nextflow", "run", "/tmp/main.nf")
+	cmd := exec.Command("nextflow", "run", "/tmp/main.nf", "-ansi-log", "false")
 	var out strings.Builder
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {

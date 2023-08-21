@@ -11,7 +11,7 @@ log.info """\
     """
     .stripIndent()
 
-process Rscript {
+process CYTOFReport {
     script:
     """
     Rscript "${params.reads}"
@@ -19,7 +19,7 @@ process Rscript {
 }
 
 workflow {
-    Rscript()
+    CYTOFReport()
 }
 
 workflow.onComplete {
