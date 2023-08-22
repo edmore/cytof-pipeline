@@ -1,0 +1,11 @@
+version: '3.9'
+
+services:
+  
+  cytof-pipeline-service:
+    image: edmore/cytof-pipeline
+    container_name: cytof-pipeline
+    entrypoint: aws-lambda-rie /service/main
+    restart: always
+    ports:
+      - 9000:8080

@@ -1,55 +1,46 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
-	"io"
-	"log"
-	"net/http"
+	"context"
+	"os"
 	"os/exec"
 	"strings"
+
+	"log/slog"
+
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-lambda-go/lambdacontext"
 )
 
-type ServiceHandler struct{}
+func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	programLevel := new(slog.LevelVar)
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
+	slog.SetDefault(logger)
 
-func (dh *ServiceHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	_ = req.Context()
-	body := req.Body
-	defer body.Close()
-	rw.WriteHeader(http.StatusAccepted)
-	rw.Header().Set("Content-Type", "application/json")
-	var b bytes.Buffer
-	io.Copy(&b, body)
-	log.Print(b.String())
+	if lc, ok := lambdacontext.FromContext(ctx); ok {
+		logger.With("awsRequestID", lc.AwsRequestID)
+	}
 
 	go func() {
 		// run pipeline
-		cmd := exec.Command("nextflow", "run", "/tmp/main.nf", "-ansi-log", "false", "--integration", b.String())
+		cmd := exec.Command("nextflow", "run", "/service/main.nf", "-ansi-log", "false", "--integration", "integration params go here")
 		var out strings.Builder
 		cmd.Stdout = &out
 		if err := cmd.Run(); err != nil {
 			// run error workflow
-			log.Fatalf(err.Error())
+			logger.Error(err.Error())
 		}
-		log.Println(out.String())
+		logger.Info(out.String())
 	}()
 
-	rw.Write([]byte("Accepted"))
-}
-
-func NewHandler() http.Handler {
-	mux := http.NewServeMux()
-	mux.Handle("/run", &ServiceHandler{})
-	return mux
+	response := events.APIGatewayV2HTTPResponse{
+		StatusCode: 200,
+		Body:       "ServiceHandler",
+	}
+	return response, nil
 }
 
 func main() {
-	fmt.Println("cytof-pipeline service")
-	srv := &http.Server{
-		Addr:    ":8081",
-		Handler: NewHandler(),
-	}
-
-	log.Println("cytof-pipeline service ...")
-	log.Fatal(srv.ListenAndServe())
+	lambda.Start(ServiceHandler)
 }

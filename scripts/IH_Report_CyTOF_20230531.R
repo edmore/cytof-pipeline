@@ -24,7 +24,7 @@ library(plotly)
 
 
 #assign working directory
-wd<-"/tmp"
+wd<-"/service"
 
 #set your working directory
 setwd(wd)
@@ -40,7 +40,7 @@ Counts <- Counts %>%
   unite(col = IH_status, Disease:Treatment, sep = ".", remove = FALSE, )
 
 #set directory where you want .pdf files of reports to be saved
-report_directory <- "/tmp"
+report_directory <- "/service"
 
 ##set the report sample!!! this will determine which sample is flagged in the report and...
 ##will define the filename when the report is saved

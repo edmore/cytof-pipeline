@@ -4,4 +4,4 @@ To build:
 
 To run:
 
-`docker run -p 8081:8081 --name cytof-pipeline edmore/cytof-pipeline cytof-pipeline service`
+`docker-compose up --build`
