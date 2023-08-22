@@ -1,5 +1,4 @@
 *.pdf
-*.csv
 .nextflow
 hsperfdata_root
 .nextflow.log*
