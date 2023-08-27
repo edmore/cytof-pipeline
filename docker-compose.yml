@@ -4,6 +4,8 @@ services:
   
   cytof-pipeline-service:
     image: edmore/cytof-pipeline
+    volumes:
+      - $HOME/.aws:/root/.aws:ro
     container_name: cytof-pipeline
     entrypoint: aws-lambda-rie /service/main
     restart: always
