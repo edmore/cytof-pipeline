@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"log/slog"
@@ -29,32 +32,56 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 		logger.With("awsRequestID", lc.AwsRequestID)
 	}
 
+	logger.InfoContext(ctx, "request info",
+		"payload", request.Body)
+	var payload Payload
+	if err := json.Unmarshal([]byte(request.Body), &payload); err != nil {
+		logger.ErrorContext(ctx, err.Error())
+		return events.APIGatewayV2HTTPResponse{
+			StatusCode: 500,
+			Body:       "ServiceHandler",
+		}, errors.New("error unmarshaling")
+
+	}
+	logger.InfoContext(ctx, "unmarshaled payload",
+		"payload", payload)
+
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		log.Fatalf("could not load AWS config %v", err)
 	}
 
-	inputFiles := []string{"20230531_counts_renamed_with_meta.csv",
-		"20230531_IH_gating_AALC_IHCV.csv",
-		"main.R"}
 	s3Client := s3.NewFromConfig(cfg)
-	pipelineStorage := NewS3(s3Client, "data-analysis-pipelines")
+	// for demo buckets are the same so will use one client
+	pipelineStorage := NewS3(s3Client, payload.Input.Bucket)
 
-	for _, filename := range inputFiles {
-		result, err := pipelineStorage.Get(ctx, &filename)
-		if err != nil {
-			logger.ErrorContext(ctx, err.Error())
-			os.Exit(1)
-		}
-		defer result.Body.Close()
-		fileContents, err := io.ReadAll(result.Body)
-		if err != nil {
-			logger.ErrorContext(ctx, err.Error())
-		}
+	inputFiles, err := pipelineStorage.List(ctx,
+		payload.Input.Prefix)
+	if err != nil {
+		log.Fatalf("could not retrieve input files")
+	}
 
-		err = os.WriteFile(fmt.Sprintf("/tmp/%s", filename), fileContents, 0755)
-		if err != nil {
-			logger.ErrorContext(ctx, err.Error())
+	for _, key := range inputFiles.Contents {
+		myKey := *key.Key
+		_, filename := filepath.Split(myKey)
+		if filename != "" {
+			logger.Info("filename",
+				slog.String("filename", filename))
+			result, err := pipelineStorage.Get(ctx, &myKey)
+			if err != nil {
+				logger.ErrorContext(ctx, err.Error())
+				os.Exit(1)
+			}
+			defer result.Body.Close()
+			fileContents, err := io.ReadAll(result.Body)
+			if err != nil {
+				logger.ErrorContext(ctx, err.Error())
+			}
+
+			err = os.WriteFile(fmt.Sprintf("/tmp/%s", filename), fileContents, 0755)
+			if err != nil {
+				logger.ErrorContext(ctx, err.Error())
+			}
 		}
 	}
 
@@ -76,7 +103,7 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 		logger.Error(err.Error())
 	}
 	_, err = pipelineStorage.Put(ctx,
-		fmt.Sprintf("out/%s", outputFilename),
+		fmt.Sprintf("%s/%s", payload.Output.Prefix, outputFilename),
 		bytesRead)
 	if err != nil {
 		logger.Error(err.Error())
@@ -89,6 +116,23 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 	return response, nil
 }
 
+type Payload struct {
+	Input  ApplicationInput  `json:"input"`
+	Output ApplicationOutput `json:"output"`
+}
+
+type ApplicationInput struct {
+	Type   string `json:"type"`
+	Bucket string `json:"bucket"`
+	Prefix string `json:"prefix"`
+}
+
+type ApplicationOutput struct {
+	Type   string `json:"type"`
+	Bucket string `json:"bucket"`
+	Prefix string `json:"prefix"`
+}
+
 func main() {
 	lambda.Start(ServiceHandler)
 }
@@ -96,6 +140,7 @@ func main() {
 type StorageService interface {
 	Get(context.Context, *string) (*s3.GetObjectOutput, error)
 	Put(context.Context, string, []byte) (*s3.PutObjectOutput, error)
+	List(context.Context, string) (*s3.ListObjectsV2Output, error)
 }
 
 type SimpleStorageService struct {
@@ -124,6 +169,18 @@ func (s *SimpleStorageService) Put(ctx context.Context, filename string, bytesRe
 		Bucket: aws.String(s.BucketName),
 		Key:    &filename,
 		Body:   bytes.NewReader(bytesRead),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return output, nil
+}
+
+func (s *SimpleStorageService) List(ctx context.Context, prefix string) (*s3.ListObjectsV2Output, error) {
+	output, err := s.Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.BucketName),
+		Prefix: &prefix,
 	})
 	if err != nil {
 		return nil, err
