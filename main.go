@@ -6,11 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"log/slog"
@@ -43,8 +41,6 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 		}, errors.New("error unmarshaling")
 
 	}
-	logger.InfoContext(ctx, "unmarshaled payload",
-		"payload", payload)
 
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
@@ -53,40 +49,27 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 
 	s3Client := s3.NewFromConfig(cfg)
 	// for demo buckets are the same so will use one client
-	pipelineStorage := NewS3(s3Client, payload.Input.Bucket)
+	pipelineStorage := NewS3(s3Client, "data-analysis-pipelines")
 
-	inputFiles, err := pipelineStorage.List(ctx,
-		payload.Input.Prefix)
-	if err != nil {
-		log.Fatalf("could not retrieve input files")
-	}
+	for _, fileInput := range payload.PresignedURLs {
+		logger.Info("url",
+			slog.String("url", fileInput.URL))
 
-	for _, key := range inputFiles.Contents {
-		myKey := *key.Key
-		_, filename := filepath.Split(myKey)
-		if filename != "" {
-			logger.Info("filename",
-				slog.String("filename", filename))
-			result, err := pipelineStorage.Get(ctx, &myKey)
-			if err != nil {
-				logger.ErrorContext(ctx, err.Error())
-				os.Exit(1)
-			}
-			defer result.Body.Close()
-			fileContents, err := io.ReadAll(result.Body)
-			if err != nil {
-				logger.ErrorContext(ctx, err.Error())
-			}
-
-			err = os.WriteFile(fmt.Sprintf("/tmp/%s", filename), fileContents, 0755)
-			if err != nil {
-				logger.ErrorContext(ctx, err.Error())
-			}
+		cmd := exec.Command("wget", "-O", fileInput.Filename, fileInput.URL)
+		cmd.Dir = "/tmp"
+		var out strings.Builder
+		var stderr strings.Builder
+		cmd.Stdout = &out
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			logger.Error(err.Error(),
+				slog.String("error", stderr.String()))
 		}
 	}
 
 	// run pipeline
-	cmd := exec.Command("Rscript", "/tmp/main.R")
+	cmd := exec.Command("Rscript", "/service/main.R")
+	cmd.Dir = "/tmp"
 	var out strings.Builder
 	var stderr strings.Builder
 	cmd.Stdout = &out
@@ -103,7 +86,7 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 		logger.Error(err.Error())
 	}
 	_, err = pipelineStorage.Put(ctx,
-		fmt.Sprintf("%s/%s", payload.Output.Prefix, outputFilename),
+		fmt.Sprintf("output/%s", outputFilename),
 		bytesRead)
 	if err != nil {
 		logger.Error(err.Error())
@@ -117,20 +100,12 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 }
 
 type Payload struct {
-	Input  ApplicationInput  `json:"input"`
-	Output ApplicationOutput `json:"output"`
+	PresignedURLs []Files `json:"presignedURLs"`
 }
 
-type ApplicationInput struct {
-	Type   string `json:"type"`
-	Bucket string `json:"bucket"`
-	Prefix string `json:"prefix"`
-}
-
-type ApplicationOutput struct {
-	Type   string `json:"type"`
-	Bucket string `json:"bucket"`
-	Prefix string `json:"prefix"`
+type Files struct {
+	Filename string `json:"filename"`
+	URL      string `json:"url"`
 }
 
 func main() {
