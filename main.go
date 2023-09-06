@@ -32,6 +32,7 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 
 	logger.InfoContext(ctx, "request info",
 		"payload", request.Body)
+
 	var payload Payload
 	if err := json.Unmarshal([]byte(request.Body), &payload); err != nil {
 		logger.ErrorContext(ctx, err.Error())
@@ -41,15 +42,6 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 		}, errors.New("error unmarshaling")
 
 	}
-
-	cfg, err := config.LoadDefaultConfig(context.TODO())
-	if err != nil {
-		log.Fatalf("could not load AWS config %v", err)
-	}
-
-	s3Client := s3.NewFromConfig(cfg)
-	// for demo buckets are the same so will use one client
-	pipelineStorage := NewS3(s3Client, "data-analysis-pipelines")
 
 	for _, fileInput := range payload.PresignedURLs {
 		logger.Info("url",
@@ -77,19 +69,39 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 	if err := cmd.Run(); err != nil {
 		logger.Error(err.Error(),
 			slog.String("error", stderr.String()))
+		return events.APIGatewayV2HTTPResponse{
+			StatusCode: 500,
+			Body:       "ServiceHandler",
+		}, nil
 	}
 
+	// put file on AWS
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		log.Fatalf("could not load AWS config %v", err)
+	}
+
+	s3Client := s3.NewFromConfig(cfg)
+	pipelineStorage := NewS3(s3Client, "data-analysis-pipelines")
 	outputFilename := "IH_report_CyTOF_53.T1_Normalized.fcs.pdf"
 	outputFile := fmt.Sprintf("/tmp/%s", outputFilename)
 	bytesRead, err := os.ReadFile(outputFile)
 	if err != nil {
 		logger.Error(err.Error())
+		return events.APIGatewayV2HTTPResponse{
+			StatusCode: 500,
+			Body:       "ServiceHandler",
+		}, nil
 	}
 	_, err = pipelineStorage.Put(ctx,
 		fmt.Sprintf("output/%s", outputFilename),
 		bytesRead)
 	if err != nil {
 		logger.Error(err.Error())
+		return events.APIGatewayV2HTTPResponse{
+			StatusCode: 500,
+			Body:       "ServiceHandler",
+		}, nil
 	}
 
 	response := events.APIGatewayV2HTTPResponse{
@@ -101,6 +113,7 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 
 type Payload struct {
 	PresignedURLs []Files `json:"presignedURLs"`
+	RunType       string  `json:"runType"`
 }
 
 type Files struct {
@@ -113,9 +126,7 @@ func main() {
 }
 
 type StorageService interface {
-	Get(context.Context, *string) (*s3.GetObjectOutput, error)
 	Put(context.Context, string, []byte) (*s3.PutObjectOutput, error)
-	List(context.Context, string) (*s3.ListObjectsV2Output, error)
 }
 
 type SimpleStorageService struct {
@@ -127,35 +138,11 @@ func NewS3(client *s3.Client, bucket string) StorageService {
 	return &SimpleStorageService{client, bucket}
 }
 
-func (s *SimpleStorageService) Get(ctx context.Context, filename *string) (*s3.GetObjectOutput, error) {
-	output, err := s.Client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(s.BucketName),
-		Key:    filename,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return output, nil
-}
-
 func (s *SimpleStorageService) Put(ctx context.Context, filename string, bytesRead []byte) (*s3.PutObjectOutput, error) {
 	output, err := s.Client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.BucketName),
 		Key:    &filename,
 		Body:   bytes.NewReader(bytesRead),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return output, nil
-}
-
-func (s *SimpleStorageService) List(ctx context.Context, prefix string) (*s3.ListObjectsV2Output, error) {
-	output, err := s.Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-		Bucket: aws.String(s.BucketName),
-		Prefix: &prefix,
 	})
 	if err != nil {
 		return nil, err
