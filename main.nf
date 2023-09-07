@@ -1,8 +1,8 @@
 /*
  * pipeline input parameters
  */
-params.reads = "$projectDir/scripts/main.R"
-params.outdir = "/tmp"
+params.reads = "$projectDir/main.R"
+params.outdir = "ourDesiredOutputDir"
 log.info """\
     C Y T O F  P I P E L I N E
     ===================================
@@ -24,5 +24,5 @@ workflow {
 }
 
 workflow.onComplete {
-    log.info ( workflow.success ? "\nDone! Your report can be found at this location --> $params.reads/IH_report_CyTOF_53.T1_Normalized.fcs.pdf\nIntegration params --> $params.integration\n" : "Oops .. something went wrong" )
+    log.info ( workflow.success ? "\nDone! Your report can be found at this location --> $params.outdir/IH_report_CyTOF_53.T1_Normalized.fcs.pdf\nIntegration params --> $params.integration\n" : "Oops .. something went wrong" )
 }

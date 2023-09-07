@@ -53,7 +53,7 @@ func main() {
 	}
 
 	// run pipeline
-	cmd := exec.Command("Rscript", "/service/main.R")
+	cmd := exec.Command("nextflow", "run", "/service/main.nf", "-ansi-log", "false", "--integration", "integration params go here")
 	cmd.Dir = "/tmp"
 	var out strings.Builder
 	var stderr strings.Builder
@@ -63,6 +63,9 @@ func main() {
 		logger.Error(err.Error(),
 			slog.String("error", stderr.String()))
 	}
+
+	logger.Info("pipeline output",
+		slog.String("output", out.String()))
 
 	// put file on AWS
 	cfg, err := config.LoadDefaultConfig(ctx)
