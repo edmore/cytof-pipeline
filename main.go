@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -13,35 +11,30 @@ import (
 
 	"log/slog"
 
-	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+func main() {
 	programLevel := new(slog.LevelVar)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
 	slog.SetDefault(logger)
 
-	if lc, ok := lambdacontext.FromContext(ctx); ok {
-		logger.With("awsRequestID", lc.AwsRequestID)
-	}
+	ctx := context.Background()
 
-	logger.InfoContext(ctx, "request info",
-		"payload", request.Body)
+	integrationID := os.Getenv("INTEGRATION_ID")
+	logger.Info("ENV info",
+		"integrationID", integrationID)
 
-	var payload Payload
-	if err := json.Unmarshal([]byte(request.Body), &payload); err != nil {
-		logger.ErrorContext(ctx, err.Error())
-		return events.APIGatewayV2HTTPResponse{
-			StatusCode: 500,
-			Body:       "ServiceHandler",
-		}, errors.New("error unmarshaling")
+	file1URL := os.Getenv("FILE1_URL")
+	logger.Info("ENV info",
+		"FILE1_URL", file1URL)
+	file2URL := os.Getenv("FILE2_URL")
+	logger.Info("ENV info",
+		"file2URL", file2URL)
 
-	}
+	var payload = getIntegrationData(integrationID, file1URL, file2URL) // payload retrieved based on
 
 	for _, fileInput := range payload.PresignedURLs {
 		logger.Info("url",
@@ -69,10 +62,6 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 	if err := cmd.Run(); err != nil {
 		logger.Error(err.Error(),
 			slog.String("error", stderr.String()))
-		return events.APIGatewayV2HTTPResponse{
-			StatusCode: 500,
-			Body:       "ServiceHandler",
-		}, nil
 	}
 
 	// put file on AWS
@@ -88,41 +77,24 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 	bytesRead, err := os.ReadFile(outputFile)
 	if err != nil {
 		logger.Error(err.Error())
-		return events.APIGatewayV2HTTPResponse{
-			StatusCode: 500,
-			Body:       "ServiceHandler",
-		}, nil
 	}
 	_, err = pipelineStorage.Put(ctx,
 		fmt.Sprintf("output/%s", outputFilename),
 		bytesRead)
 	if err != nil {
 		logger.Error(err.Error())
-		return events.APIGatewayV2HTTPResponse{
-			StatusCode: 500,
-			Body:       "ServiceHandler",
-		}, nil
 	}
 
-	response := events.APIGatewayV2HTTPResponse{
-		StatusCode: 200,
-		Body:       "ServiceHandler",
-	}
-	return response, nil
+	logger.Info("Processing complete")
 }
 
 type Payload struct {
 	PresignedURLs []Files `json:"presignedURLs"`
-	RunType       string  `json:"runType"`
 }
 
 type Files struct {
 	Filename string `json:"filename"`
 	URL      string `json:"url"`
-}
-
-func main() {
-	lambda.Start(ServiceHandler)
 }
 
 type StorageService interface {
@@ -149,4 +121,20 @@ func (s *SimpleStorageService) Put(ctx context.Context, filename string, bytesRe
 	}
 
 	return output, nil
+}
+
+func getIntegrationData(integrationID string, file1 string, file2 string) Payload {
+	files := []Files{
+		{
+			Filename: "20230531_IH_gating_AALC_IHCV.csv",
+			URL:      file1,
+		},
+		{
+			Filename: "20230531_counts_renamed_with_meta.csv",
+			URL:      file2,
+		},
+	}
+	return Payload{
+		PresignedURLs: files,
+	}
 }

@@ -3,7 +3,6 @@ module github.com/edmore/cytof-pipeline
 go 1.21
 
 require (
-	github.com/aws/aws-lambda-go v1.41.0
 	github.com/aws/aws-sdk-go-v2 v1.21.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.37
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.38.5

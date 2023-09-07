@@ -2,12 +2,14 @@ version: '3.9'
 
 services:
   
-  cytof-pipeline-service:
-    image: edmore/cytof-pipeline
+  cytof-pipeline-fargate-task:
+    env_file:
+      - dev.env
+    image: edmore/cytof-pipeline-fargate
     volumes:
       - $HOME/.aws:/root/.aws:ro
-    container_name: cytof-pipeline
-    entrypoint: aws-lambda-rie /service/main
-    restart: always
-    ports:
-      - 9000:8080
+    container_name: cytof-pipeline-fargate
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    entrypoint: /service/main
