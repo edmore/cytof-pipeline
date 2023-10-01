@@ -61,6 +61,7 @@ RUN Rscript -e "BiocManager::install('RProtoBufLib')"
 RUN Rscript -e "BiocManager::install('cytolib')"
 RUN Rscript -e "BiocManager::install('flowCore')"
 RUN Rscript -e "BiocManager::install('FlowSOM')"
+RUN Rscript -e "install.packages(c('tidyverse'), Ncpus = 10)"
 RUN Rscript -e "require(devtools);library(devtools);devtools::install_github('ianmoran11/mmtable2');devtools::install_local('./I3HQC_packagev531b.zip')"
 
 # install aws-lambda-rie
