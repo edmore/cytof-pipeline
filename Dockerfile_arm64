@@ -1,8 +1,8 @@
-FROM rocker/r-ver
+FROM rocker/r-ver:4.2.1
 
 WORKDIR /service
 
-RUN apt-get update
+RUN apt clean && apt-get update
 # install dependencies
 RUN apt-get -y install wget && apt-get -y install gnupg && apt-get -y install curl
 RUN wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt-key add -
@@ -43,8 +43,25 @@ RUN go version
 
 RUN go build -o /service/main main.go
 
-RUN Rscript -e "install.packages(c('ggplot2', 'readxl', 'dplyr', 'RColorBrewer', 'viridis', 'cowplot', 'patchwork', 'tidyr', 'stringr', 'ggsci', 'magrittr', 'mblm', 'rstatix', 'psych', 'ggbeeswarm', 'umap', 'reshape2', 'pheatmap', 'plotly', 'spdep'), Ncpus = 10)"
+# install devtools
+RUN apt-get -y install libcurl4-openssl-dev libfontconfig1-dev libxml2-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+RUN apt install -y build-essential libcurl4-gnutls-dev libxml2-dev libssl-dev libgit2-dev cmake
+RUN Rscript -e "install.packages(c('BH'), repos = 'https://cloud.r-project.org/', dependencies = TRUE)"
+RUN Rscript -e "install.packages(c('devtools'), repos = 'https://cloud.r-project.org/', dependencies = TRUE)"
+
+# install BiocManager
+RUN R --version
+RUN Rscript -e "install.packages('BiocManager')"
+
+# install I3HQC package
+RUN Rscript -e "install.packages(c('ggplot2', 'readxl', 'dplyr', 'RColorBrewer', 'viridis', 'cowplot', 'patchwork', 'tidyr', 'stringr', 'ggsci', 'magrittr', 'mblm', 'rstatix', 'psych', 'ggbeeswarm', 'umap', 'reshape2', 'pheatmap', 'plotly', 'spdep'), Ncpus = 10)" # for Cytof Report
 RUN Rscript -e "install.packages(c('ggpubr'), repos = 'https://cloud.r-project.org/', dependencies = TRUE)"
+RUN Rscript -e "install.packages(c('nloptr', 'lme4', 'pbkrtest', 'car', 'lubridate'), Ncpus = 10)"
+RUN Rscript -e "BiocManager::install('RProtoBufLib')"
+RUN Rscript -e "BiocManager::install('cytolib')"
+RUN Rscript -e "BiocManager::install('flowCore')"
+RUN Rscript -e "BiocManager::install('FlowSOM')"
+RUN Rscript -e "require(devtools);library(devtools);devtools::install_github('ianmoran11/mmtable2');devtools::install_local('./I3HQC_packagev531b.zip')"
 
 # install aws-lambda-rie
 RUN curl -Lo aws-lambda-rie https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie-arm64 \

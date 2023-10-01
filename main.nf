@@ -4,7 +4,7 @@
 params.reads = "$projectDir/scripts/main.R"
 params.outdir = "/tmp"
 log.info """\
-    C Y T O F  P I P E L I N E
+    C Y T O F  QC P I P E L I N E
     ===================================
     reads        : ${params.reads}
     outdir       : ${params.outdir}

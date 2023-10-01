@@ -1,289 +1,213 @@
-#read in packages
-
-library(ggplot2)
-library(readxl)
-library(dplyr)
-library(ggpubr)
-library(RColorBrewer)
-library(viridis)
-library(cowplot)
-library(patchwork)
-library(tidyr)
-library(stringr)
-library(ggsci)
-library(magrittr)
-library(mblm)
-library(rstatix)
-library(spdep)
-library(psych)
-library(ggbeeswarm)
+library(I3HQC)
+library(tidyverse)
+library(FlowSOM)
 library(umap)
-library(reshape2)
-library(pheatmap)
-library(plotly)
+
+###dir_in <- "~/Documents/git/R/Pennsieve_Test/20230503 and 20230504_cleanuptags_50K"
+dir_in <- "~/Downloads/VIP2"
+###dir_in <- "~/Downloads/AALC_cleanuptags_QC4-6IHgating"
+
+####dir_out <- "~/Documents/git/R/Pennsieve_Test/out"
+dir_out <- "~/Downloads/VIP2_results"
+###dir_out <- "~/Downloads/AALC_cleanuptags_QC4-6IHgating_results5"
+
+### Read manifest from file (if it exists)
+# manifest <- read_csv(paste0(dir_in, "manifest.csv"))
+
+### OR make a bare-bones version on the fly
+### NEW: this also pulls day of run from FCS header
+manifest <- make_manifest(dir_in, control_pattern = "HD")
+manifest
+## optional:   manifest <- make_manifest(dir_in)
+
+omiq_key_file <- paste0(dir_in, "/_FilterValuesToNames.csv")
+qc_data <- read_data(manifest, omiq_key_file)
+
+### uncomment next line to output cleaned files
+# write_CD45_gated_fcs(qc_data, dir_out)
+
+#######################################################
+################## Cleanup / beads ####################
+### Skip this section if working with cleaned files ###
+#######################################################
+
+mmtab <- get_cleanup_table(qc_data)
+gtsave(mmtab , filename = paste0(dir_out, "/table.pdf"))
 
 
-#assign working directory
-wd<-"/tmp"
+## For Matei, gtsave destroys formatting (color, boldface etc)
+## Clumsy workaround: display in Rstudio -> Export -> Save as Web Page
+## -> open in browser -> print -> save as pdf
+mmtab
 
-#set your working directory
-setwd(wd)
 
-#Read in data
-Counts1 <-read.csv("20230531_IH_gating_AALC_IHCV.csv") 
+## Flag channel/file pairs where acquisition is not stable over time
+js_time <- get_js_time(qc_data)
+js_time_max <- js_time %>%
+  group_by(file, channel) %>%
+  summarise(max_js_div = max(js_div))
 
-Counts2 <-read.csv("20230531_counts_renamed_with_meta.csv") 
+ggplot(js_time_max, aes(x=file, y=channel, fill=max_js_div)) +
+  geom_tile() +
+  scale_fill_gradient(low="white", high="red", limits=c(0,1)) +
+  theme_bw(base_size=14)
 
-Counts <- Counts1 %>% full_join(Counts2)
-
-Counts <- Counts %>%
-  unite(col = IH_status, Disease:Treatment, sep = ".", remove = FALSE, )
-
-#set directory where you want .pdf files of reports to be saved
-report_directory <- "/tmp"
-
-##set the report sample!!! this will determine which sample is flagged in the report and...
-##will define the filename when the report is saved
-report_sample <- "53.T1_Normalized.fcs"
-
-report_Study <- "PREPRO"
-
-#calculate frequencies of interest
-Frequencies <- Counts %>%
-  mutate(Bcells = TotalCD19B / Mononuclear) %>%
-  mutate(Naive_Bcells = NaiveB / TotalCD19B) %>%
-  mutate(Memory_Bcells_count = IgDnegMemB + IgDposMemB) %>%
-  mutate(Memory_Bcells = Memory_Bcells_count / TotalCD19B) %>%
-  mutate(Plasmablasts = Plasmablast / TotalCD19B) %>%
-  mutate(Monocytes = TotalMonocyte / Mononuclear) %>%
-  mutate(Classical_Monocytes = ClassicalMono / TotalMonocyte) %>%
-  mutate(Transitional_Monocytes = TransitionalMono / TotalMonocyte) %>%
-  mutate(Nonclassical_Monocytes = NonclassicalMono / TotalMonocyte) %>%
-  mutate(Basophils = Basophil / Mononuclear) %>%
-  mutate(ILCs = ILC / Mononuclear) %>%
-  mutate(NKcells = TotalNK / Mononuclear) %>%
-  mutate(Early_NK = EarlyNK / TotalNK) %>%
-  mutate(Late_NK = LateNK / TotalNK) %>%
-  mutate(DCs = TotalDC / Mononuclear) %>%
-  mutate(pDCs = pDC / TotalDC) %>%
-  mutate(cDCs = cDC / TotalDC) %>%
-  mutate(mDCs = mDC / TotalDC) %>%
-  mutate(Tcells = abT / Mononuclear) %>%
-  mutate(gd_Tcells = gdT / Mononuclear) %>%
-  mutate(MAIT_NKT = MAITNKT / Mononuclear) %>%
-  mutate(CD8s = CD8 / abT) %>%
-  mutate(CD4s = CD4 / abT) %>%
-  mutate(DNTs = DNT / abT) %>%
-  mutate(DPTs = DPT / abT) %>%
-  mutate(CD8_Naive = CD8Naive / CD8) %>%
-  mutate(CD8_EM1 = CD8TEM1 / CD8) %>%
-  mutate(CD8_EM1_activated = CD8TEM1_activated / CD8TEM1) %>%
-  mutate(CD8_CM = CD8TCM / CD8) %>%
-  mutate(CD8_CM_activated = CD8TCM_activated / CD8TCM) %>%
-  mutate(CD8_EM3 = CD8TEM3 / CD8) %>%
-  mutate(CD8_EM3_activated = CD8TEM3_activated / CD8TEM3) %>%
-  mutate(CD8_EM2 = CD8TEM2 / CD8) %>%
-  mutate(CD8_EM2_activated = CD8TEM2_activated / CD8TEM2) %>%
-  mutate(CD8_EMRA = CD8TEMRA / CD8) %>%
-  mutate(CD8_EMRA_activated = CD8TEMRA_activated / CD8TEMRA) %>%
-  mutate(CD8_activated = nnCD8_activated / nnCD8) %>%
-  mutate(CD4_Naive = CD4Naive / CD4) %>%
-  mutate(CD4_EM1 = CD4TEM1 / CD4) %>%
-  mutate(CD4_EM1_activated = CD4TEM1_activated / CD4TEM1) %>%
-  mutate(CD4_CM = CD4TCM / CD4) %>%
-  mutate(CD4_CM_activated = CD4TCM_activated / CD4TCM) %>%
-  mutate(CD4_EM3 = CD4TEM3 / CD4) %>%
-  mutate(CD4_EM3_activated = CD4TEM3_activated / CD4TEM3) %>%
-  mutate(CD4_EM2 = CD4TEM2 / CD4) %>%
-  mutate(CD4_EM2_activated = CD4TEM2_activated / CD4TEM2) %>%
-  mutate(CD4_EMRA = CD4TEMRA / CD4) %>%
-  mutate(CD4_EMRA_activated = CD4TEMRA_activated / CD4TEMRA) %>%
-  mutate(CD4_activated = nnCD4_activated / nnCD4) %>%
-  mutate(cTfh = nnCD4CXCR5pos / CD4) %>%
-  mutate(cTfh_activated = nnCD4CXCR5pos_activated / nnCD4CXCR5pos) %>%
-  mutate(Tregs = Treg / CD4) %>%
-  mutate(Tregs_activated = Treg_activated / Treg) %>%
-  mutate(Th1s = Th1 / CD4) %>%
-  mutate(Th1s_activated = Th1_activated / Th1) %>%
-  mutate(Th17s = Th17 / CD4) %>%
-  mutate(Th17s_activated = Th17_activated / Th17) %>%
-  mutate(Th2s = Th2 / CD4) %>%
-  mutate(Th2s_activated = Th2_activated / Th2) %>%
-  mutate(Granulocytes = Granulocyte / CD45) %>%
-  mutate(Neutrophils = Neutrophil / Granulocyte) %>%
-  mutate(Eosinophils = Eosinophil / Granulocyte)
-  
-#select columns of interest (frequencies and metadata)
-#can select to exclude activated populations
-Frequencies_selected <- Frequencies %>%
-  #select(c(1:timepoint, Bcells:Eosinophils)) %>%
-  select(-c(Memory_Bcells_count)) %>%
-    filter(Study != "IH_control") 
-  #select(-c(contains("activated")))
+plot_time_outliers(qc_data, js_time_max, dir_out, cutoff=0.05)
 
 
 
-#make the numerical dataframe into a matrix
-Frequencies_selected_features <- Frequencies_selected %>% select(c(Bcells:Eosinophils))
-Frequencies_selected_metadata <- Frequencies_selected %>% select(-c(Bcells:Eosinophils))
 
-Frequencies.matrix <-as.matrix(Frequencies_selected_features, replace=T)
-Frequencies.scale<-scale(Frequencies.matrix)
-Frequencies.scale[is.na(Frequencies.scale)] <- 0
+#######################################################
+################ Univariate Model #####################
+#######################################################
 
-#Run a UMAP on scaled data
-Frequencies.umap<-umap(Frequencies.scale, pca=100)
+hist <- binned_histograms(qc_data)
+## ?binned_histograms ## view documentation
+## View(binned_histograms) ## examine source code
 
-#Bind the (1) Row Annotations, (2) SCALED data, (3) UMAP Infoumap layout and row information
-Frequencies.combined<-cbind(Frequencies_selected_metadata,Frequencies.scale,Frequencies.umap$layout)
+js <- get_js_hist(hist)
+js_score <- average_js_score(js , n_sd_cutoff = 2)
+js
+js_score
+# write_csv(js_score, file=paste0(dir_out, "qc_js_univariate.csv"))  ##optional
 
-names(Frequencies.combined)[names(Frequencies.combined) == "1"] <- "UMAP1"
-names(Frequencies.combined)[names(Frequencies.combined) == "2"] <- "UMAP2"
+plot_js_all(js)
+ggsave(paste0(dir_out,"/figures/qc/js_1d.png"), width=12,height=11)
 
-#Plot it out - R-UNROTATED
-UMAP_Frequencies_Study <- ggplot(subset(Frequencies.combined), aes(x=UMAP1,y=UMAP2,color=Study))+
-  geom_point(alpha = 0.9, size = 1.8)+
-  theme_bw() + theme(legend.position = "bottom") +  
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
-  labs(y = "UMAP2") +
-  labs(x= "UMAP1") +
-  #labs(fill = "Prior SARS-CoV2+") +
-  theme(legend.position = "right") +
-  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) + 
-  ggtitle("Immune Landscape") +
-  theme(plot.title = element_text(hjust = 0.5,size = 20, face = "bold")) +
-  theme(axis.text.y = element_blank()) + 
-  #theme(axis.text.x = element_blank()) + 
-  #theme(axis.text.y = element_blank()) + 
-  #facet_wrap(~Subject_ID)+
-  scale_color_manual(values = c("#CA3433", "#54BEEC", "#0D753B","#FF781F", "#EF4BB5", "#7E42DB", "grey50")) 
-  #scale_shape_manual(values = c(1,17,15, 5, 8, 9))
-#scale_size_manual(values = c(1,1,1,1,3))+
-#coord_fixed(0.7/0.7)
-UMAP_Frequencies_Study
+plot_js_control(js, manifest)
+ggsave(paste0(dir_out,"/figures/qc/js_1d_control.png"), width=9,height=8)
+
+plot_js_channel(js, "CD4")
+ggsave(paste0(dir_out, "/figures/qc/js_CD4.png"), width=9, height=8)
+
+## color by any metadata column
+plot_hist_facets_all(hist, js_score, color_col="date")
+ggsave(paste0(dir_out,"/figures/qc/univariate_all.png"), width=12, height=8)
+
+plot_hist_facets_control(hist, color_col="file")
+ggsave(paste0(dir_out,"/figures/qc/univariate_control.png"), width=12, height=8)
 
 
-#Plot it out - R-UNROTATED
-UMAP_Frequencies_IH_status <- ggplot(subset(Frequencies.combined), aes(x=UMAP1,y=UMAP2,color=IH_status))+
-  geom_point(alpha = 0.9, size = 1.8)+
-  theme_bw() + theme(legend.position = "bottom") +  
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
-  labs(y = "UMAP2") +
-  labs(x= "UMAP1") +
-  #labs(fill = "Prior SARS-CoV2+") +
-  theme(legend.position = "right") +
-  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) + 
-  ggtitle("Immune Landscape") +
-  theme(plot.title = element_text(hjust = 0.5,size = 20, face = "bold")) +
-  theme(axis.text.y = element_blank()) + 
-  theme(axis.text.x = element_blank()) + 
-  #theme(axis.text.y = element_blank()) + 
-  #facet_wrap(~Subject_ID)+
-  scale_color_manual(values = c("#CA3433", "#54BEEC", "#0D753B","#FF781F", "#EF4BB5", "#7E42DB", "grey50")) 
-#scale_shape_manual(values = c(1,17,15, 5, 8, 9))
-#scale_size_manual(values = c(1,1,1,1,3))+
-#coord_fixed(0.7/0.7)
-UMAP_Frequencies_IH_status
+## plots for individual channels, color by any metadata column
+channels <- unique(hist$channel)
+for (ch in channels) {
+  p <- plot_hist_all(hist, ch, color_col="date")
+  ggsave(p, filename = paste0(dir_out, "/figures/kdes_all/", ch, ".png"),
+         width=12, height=7)
 
-#Plot it out - R-UNROTATED
-UMAP_Frequencies_Disease <- ggplot(subset(Frequencies.combined), aes(x=UMAP1,y=UMAP2,color=Disease))+
-  geom_point(alpha = 0.9, size = 1.8)+
-  theme_bw() + theme(legend.position = "bottom") +  
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
-  labs(y = "UMAP2") +
-  labs(x= "UMAP1") +
-  #labs(fill = "Prior SARS-CoV2+") +
-  theme(legend.position = "right") +
-  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) + 
-  ggtitle("Immune Landscape") +
-  theme(plot.title = element_text(hjust = 0.5,size = 20, face = "bold")) +
-  theme(axis.text.y = element_blank()) + 
-  theme(axis.text.x = element_blank()) + 
-  #theme(axis.text.y = element_blank()) + 
-  #facet_wrap(~Subject_ID)+
-  scale_color_manual(values = c("#CA3433", "#54BEEC", "#0D753B","#FF781F", "#EF4BB5", "#7E42DB", "grey50")) 
-#scale_shape_manual(values = c(1,17,15, 5, 8, 9))
-#scale_size_manual(values = c(1,1,1,1,3))+
-#coord_fixed(0.7/0.7)
-UMAP_Frequencies_Disease
+  p <- plot_hist_control(hist, ch, color_col="file")
+  ggsave(p, filename = paste0(dir_out, "/figures/kdes_control/", ch, ".png"),
+         width=12, height=7)
+}
 
 
-Frequencies_long <- Frequencies_selected %>% pivot_longer(Bcells:Eosinophils, names_to = "parameter", values_to = "percent") 
-#put the populations in your desired display order
-#endpoints.df_long$parameter <- factor(endpoints.df_long$parameter, levels = c("Lymphocytes", "NK", "Bcells", "Plasmablasts", "Tcells", "CD4_T", "CD4_Naive", "CD8_T", "CD8_Naive", "Granulocytes", "Monocytes", "DC", "Basophils", "Eosinophils"))
-#assign artificial zeros (unnecessary since not using log scale below)
-Frequencies_long_nonzero <- Frequencies_long %>%  mutate(percent = if_else(percent < 0.0001, as.double(0.0001), percent)) %>%
-  filter(IH_status == "healthy.none" | Study == report_Study)
+##### gets rid of something that came from an error before###  rm(ch)
 
-Frequencies_long_nonzero$Study[Frequencies_long_nonzero$Study != report_Study] <- "Healthy"
+#######################################################
+############## Multivariate Model #####################
+#######################################################
 
-stat.test_all_parameters_Study  <- Frequencies_long_nonzero %>%
-  group_by(parameter) %>%
-  wilcox_test(percent ~ Study) %>%
-  adjust_pvalue(method = "BH") %>%
-  add_significance() %>%
-  add_y_position(fun = "max", step.increase = 0) %>%
-  mutate(y.position = y.position *1.1)
-stat.test_all_parameters_Study
+cols_clustering <- c("CD3", "CD4", "CD8a", "CD20", "CD11c", "CD294",
+                     "CD66b", "CD56", "CD123", "TCRgd", "CD38")
+data_clustering <- qc_data$data[,cols_clustering]
 
-#make the report!
-all_parameters_Study <- ggplot(Frequencies_long_nonzero, aes(x = Study, y = percent)) +
-  #geom_point(pch=21, colour = "black", alpha = 0.8, size = 2) +
-  geom_quasirandom(pch = 21, varwidth = TRUE, width = 0.3, size = 1.5, alpha = 0.5, aes (fill = Study))+
-  geom_boxplot(alpha = 0.3, width = 0.5, outlier.size = -1, lwd = 0.5, aes(fill = Study)) +
-  #geom_line(alpha = 0.2, size = 0.5, aes(group = interaction(sample_ID, Tetramer), color = cell_type)) + 
-  #stat_summary_bin(breaks = c(-1, 1, 4.5, 6.5, 8.5, 11.5, 20), fun=mean, geom = "line", size = 1, aes(group = cell_type, color = cell_type)) +
-  scale_y_log10() +
-  #stat_pvalue_manual(stat.test_all_parameters, hide.ns = TRUE, label = "p.adj.signif", remove.bracket = FALSE) +
-  stat_pvalue_manual(stat.test_all_parameters_Study, hide.ns = TRUE, label = "p.adj.signif", remove.bracket = FALSE) +
-  theme_bw() + theme(legend.position = "bottom") +  
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
-  labs(y = "Fraction") +
-  labs(x= "") +
-  labs(fill = "Data") +
-  guides(color = "none") +
-  theme(legend.position = "none") +
-  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) + 
-  ggtitle("Immune cell populations by Study") +
-  theme(plot.title = element_text(hjust = 0.5,size = 20, face = "bold")) +
-  scale_fill_manual(values = c("#CA3433", "#54BEEC")) +
-  scale_color_manual(values = c("#CA3433", "#54BEEC"))+
-  #scale_size_manual(values = c(2,5)) +
-  #scale_alpha_manual(values = c(0.5, 1)) +
-  facet_wrap(~parameter, ncol = 9) +
-  theme(strip.background = element_blank(), strip.text.y = element_blank())
-all_parameters_Study
+set.seed(0)
+som <- SOM(data_clustering, xdim=10, ydim=10)  #default xdim ydim
 
-layout2 <- "
-AABBCC
-AABBCC
-DDDDDD
-DDDDDD
-DDDDDD
-DDDDDD
-DDDDDD
-DDDDDD
-DDDDDD
-DDDDDD
-"
+set.seed(0)
+metaclusters <- metacluster_som(qc_data$data, som, k=10)
+clustering <- metaclusters$clustering
+centroids <- metaclusters$centroids
+
+pheatmap::pheatmap(centroids)
+
+
+### Visualize
+
+set.seed(0)
+sel_umap <- sample(nrow(data_clustering), 5e4) #50K cells subsampling to run in <10 min
+um <- umap(data_clustering[sel_umap,])
+
+
+dim_red <- as_tibble(qc_data$data[sel_umap,]) %>%
+  mutate(umap1 = um$layout[,1],
+         umap2 = um$layout[,2],
+         cluster = clustering[sel_umap],
+         file_id = as.double(qc_data$file_array[sel_umap])) %>%
+  inner_join(qc_data$manifest)
+
+plot_umap_discrete(dim_red, "cluster", "Cell Type")
+ggsave(filename=paste0(dir_out,"/figures/umap/clustering.png"), width=9, height=7)
+
+plot_umap_discrete(dim_red, "control", "Control cells")
+ggsave(filename=paste0(dir_out,"/figures/umap/control.png"), width=9, height=7)
+
+
+for (m in colnames(qc_data$data)) {
+  p <- plot_umap_continuous(dim_red, m, m)
+  ggsave(p, filename=paste0(dir_out,"/figures/umap/channel_", m, ".png"),
+         width=9, height=7)
+}
+
+
+feat <- features_multivariate(qc_data$file_array, clustering, manifest)
+labels <- levels(clustering) ##### 05.31: added this line to fix error
+feat_tall <- feat %>%
+  pivot_longer(all_of(labels),
+               names_to="cell_type",
+               values_to="fraction")
+
+ggplot(feat_tall %>% filter(control),  ##remove filter control for the rest of the samples
+       aes(fill=as.factor(file), x=fraction, y=factor(file, levels=rev(levels(factor(file)))))) +
+  geom_col(position="dodge") +
+  facet_wrap(~cell_type, scales="free_x") +
+  scale_y_discrete(name="Filename") +
+  theme_bw()
+ggsave(paste0(dir_out,"/figures/qc/cluster_perc_control.png"), width=9, height=7)
+
+
+feat_cv <- feat_tall %>%
+  filter(control) %>%
+  group_by(cell_type) %>%
+  summarise(Mean = mean(fraction),
+            SD = sd(fraction)) %>%
+  mutate(CV = SD/Mean)
+ggplot(feat_cv, aes(y=cell_type, x=CV)) +
+  geom_col(fill="#00BFC4") +
+  ylab("Cell Type") +
+  geom_vline(xintercept=0.25, linetype="dashed") +
+  theme_bw(base_size=16)
+ggsave(paste0(dir_out,"/figures/qc/cluster_CV.png"), width=9, height=7)
+
+
+###########################################
+################ EMD ######################
+###########################################
+
+emd <- get_emd(qc_data$file_array, som$mapping[,1], som$codes)
+
+set.seed(0)
+umap_emd <- compute_umap_dist(emd, unique(qc_data$file_array),
+                              inner_join(manifest, js_score), n_neighbors = 7)
+
+plot_umap_emd(umap_emd) +
+  ggtitle("UMAP of EMD distance between samples")
+ggsave(paste0(dir_out,"/figures/qc/umap_emd_all_cells.png"), width=9, height=7)
 
 
 
-IH_report_CyTOF <- UMAP_Frequencies_Study + UMAP_Frequencies_IH_status + UMAP_Frequencies_Disease + all_parameters_Study + 
-  plot_layout(design = layout2)
-IH_report_CyTOF
+###########################################
+################ EMD not neutro ###########
+###########################################
 
+not_neutro <- which(metaclusters$metacl != "Neutrophils")
+emd_not_neutro <- get_emd(qc_data$file_array, som$mapping[,1], som$codes, keep=not_neutro)
 
-filename <- paste0("IH_report_CyTOF_", report_sample, ".pdf")
-filename
+set.seed(0)
+umap_emd_not_neutro <- compute_umap_dist(emd_not_neutro, unique(qc_data$file_array),
+                                         inner_join(manifest, js_score), n_neighbors = 7)
 
-ggsave(
-  filename,
-  plot = IH_report_CyTOF,
-  device = NULL,
-  path = report_directory,
-  scale = 3,
-  width = 5,
-  height = 6,
-  dpi = 300,
-  limitsize = TRUE,)
+plot_umap_emd(umap_emd_not_neutro, color_col = "date") +
+  ggtitle("UMAP of EMD distance between samples; granulocytes excluded")
+ggsave(paste0(dir_out,"/figures/qc/umap_emd_no_neturophils.png"), width=9, height=7)
+
