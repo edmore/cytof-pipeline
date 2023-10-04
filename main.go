@@ -23,7 +23,7 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 	}
 
 	// run pipeline
-	cmd := exec.Command("Rscript", "/service/main.R")
+	cmd := exec.Command("Rscript", "/service/main.R", "/service/data", "/service/data")
 	cmd.Dir = "/tmp"
 	var out strings.Builder
 	var stderr strings.Builder

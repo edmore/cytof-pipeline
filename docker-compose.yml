@@ -6,6 +6,7 @@ services:
     image: edmore/cytof-qc-pipeline
     volumes:
       - $HOME/.aws:/root/.aws:ro
+      - ./data:/service/data
     container_name: cytof-qc-pipeline
     entrypoint: aws-lambda-rie /service/main
     restart: always

@@ -4,3 +4,6 @@ hsperfdata_root
 .nextflow.log*
 work
 libjansi-64.so
+data
+.DS_Store
+*.zip
