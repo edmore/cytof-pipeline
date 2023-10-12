@@ -1,19 +1,11 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
 
 	"log/slog"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 func main() {
@@ -21,7 +13,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
 	slog.SetDefault(logger)
 
-	ctx := context.Background()
+	// ctx := context.Background()
 
 	integrationID := os.Getenv("INTEGRATION_ID")
 	logger.Info("ENV info",
@@ -34,6 +26,19 @@ func main() {
 	logger.Info("ENV info",
 		"file2URL", file2URL)
 
+	dfCmd := exec.Command("df", "-h")
+	var dfCmdout strings.Builder
+	var dfCmdstderr strings.Builder
+	dfCmd.Stdout = &dfCmdout
+	dfCmd.Stderr = &dfCmdstderr
+	if err := dfCmd.Run(); err != nil {
+		logger.Error(err.Error(),
+			slog.String("error", dfCmdstderr.String()))
+	}
+
+	logger.Info("df output",
+		slog.String("output", dfCmdout.String()))
+
 	var payload = getIntegrationData(integrationID, file1URL, file2URL) // payload retrieved based on
 
 	for _, fileInput := range payload.PresignedURLs {
@@ -41,7 +46,7 @@ func main() {
 			slog.String("url", fileInput.URL))
 
 		cmd := exec.Command("wget", "-O", fileInput.Filename, fileInput.URL)
-		cmd.Dir = "/tmp"
+		cmd.Dir = "/mnt"
 		var out strings.Builder
 		var stderr strings.Builder
 		cmd.Stdout = &out
@@ -50,11 +55,14 @@ func main() {
 			logger.Error(err.Error(),
 				slog.String("error", stderr.String()))
 		}
+		logger.Info("download output",
+			slog.String("output", out.String()))
+
 	}
 
 	// run pipeline
 	cmd := exec.Command("nextflow", "run", "/service/main.nf", "-ansi-log", "false", "--integration", "integration params go here")
-	cmd.Dir = "/tmp"
+	cmd.Dir = "/mnt"
 	var out strings.Builder
 	var stderr strings.Builder
 	cmd.Stdout = &out
@@ -67,27 +75,6 @@ func main() {
 	logger.Info("pipeline output",
 		slog.String("output", out.String()))
 
-	// put file on AWS
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		log.Fatalf("could not load AWS config %v", err)
-	}
-
-	s3Client := s3.NewFromConfig(cfg)
-	pipelineStorage := NewS3(s3Client, "data-analysis-pipelines")
-	outputFilename := "IH_report_CyTOF_53.T1_Normalized.fcs.pdf"
-	outputFile := fmt.Sprintf("/tmp/%s", outputFilename)
-	bytesRead, err := os.ReadFile(outputFile)
-	if err != nil {
-		logger.Error(err.Error())
-	}
-	_, err = pipelineStorage.Put(ctx,
-		fmt.Sprintf("output/%s", outputFilename),
-		bytesRead)
-	if err != nil {
-		logger.Error(err.Error())
-	}
-
 	logger.Info("Processing complete")
 }
 
@@ -98,32 +85,6 @@ type Payload struct {
 type Files struct {
 	Filename string `json:"filename"`
 	URL      string `json:"url"`
-}
-
-type StorageService interface {
-	Put(context.Context, string, []byte) (*s3.PutObjectOutput, error)
-}
-
-type SimpleStorageService struct {
-	Client     *s3.Client
-	BucketName string
-}
-
-func NewS3(client *s3.Client, bucket string) StorageService {
-	return &SimpleStorageService{client, bucket}
-}
-
-func (s *SimpleStorageService) Put(ctx context.Context, filename string, bytesRead []byte) (*s3.PutObjectOutput, error) {
-	output, err := s.Client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(s.BucketName),
-		Key:    &filename,
-		Body:   bytes.NewReader(bytesRead),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return output, nil
 }
 
 func getIntegrationData(integrationID string, file1 string, file2 string) Payload {

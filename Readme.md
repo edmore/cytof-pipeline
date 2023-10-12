@@ -1,10 +1,10 @@
 To build:
 
-`docker build -t edmore/cytof-pipeline .`
+`docker build -t edmore/cytof-pipeline-fargate .`
 
 On amd64 architectures:
 
-`docker build -f Dockerfile_amd64 -t edmore/cytof-pipeline .`
+`docker build -f Dockerfile_amd64 -t edmore/cytof-pipeline-fargate .`
 
 To run:
 
