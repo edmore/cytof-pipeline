@@ -13,8 +13,6 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
 	slog.SetDefault(logger)
 
-	// ctx := context.Background()
-
 	integrationID := os.Getenv("INTEGRATION_ID")
 	logger.Info("ENV info",
 		"integrationID", integrationID)
