@@ -2,13 +2,14 @@ version: '3.9'
 
 services:
   
-  cytof-qc-pipeline-service:
-    image: edmore/cytof-qc-pipeline
+  cytof-pipeline-fargate-task:
+    env_file:
+      - dev.env
+    image: cytof-qc-pipeline
     volumes:
       - $HOME/.aws:/root/.aws:ro
-      - ./data:/service/data
     container_name: cytof-qc-pipeline
-    entrypoint: aws-lambda-rie /service/main
-    restart: always
-    ports:
-      - 9000:8080
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    entrypoint: /service/main

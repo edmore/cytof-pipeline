@@ -1,30 +1,34 @@
 package main
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"strings"
 
 	"log/slog"
-
-	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-lambda-go/lambdacontext"
 )
 
-func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+func main() {
 	programLevel := new(slog.LevelVar)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
 	slog.SetDefault(logger)
 
-	if lc, ok := lambdacontext.FromContext(ctx); ok {
-		logger.With("awsRequestID", lc.AwsRequestID)
+	integrationID := os.Getenv("INTEGRATION_ID")
+	inputDir := "/service/data"
+	outDir := "/mnt"
+
+	if os.Getenv("INPUT_DIR") != "" {
+		inputDir = os.Getenv("INPUT_DIR")
+	}
+	if os.Getenv("OUT_DIR") != "" {
+		outDir = os.Getenv("OUT_DIR")
 	}
 
+	// TODO: create input and output directories -> /mnt/input<integrationID> and /mnt/output<integrationID>
+
 	// run pipeline
-	cmd := exec.Command("Rscript", "/service/main.R", "/service/data", "/service/data")
-	cmd.Dir = "/tmp"
+	cmd := exec.Command("nextflow", "run", "/service/main.nf", "-ansi-log", "false", "--integration", integrationID, "--inputDir", inputDir, "--outDir", outDir)
+	cmd.Dir = "/service"
 	var out strings.Builder
 	var stderr strings.Builder
 	cmd.Stdout = &out
@@ -34,13 +38,8 @@ func ServiceHandler(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 			slog.String("error", stderr.String()))
 	}
 
-	response := events.APIGatewayV2HTTPResponse{
-		StatusCode: 200,
-		Body:       "ServiceHandler",
-	}
-	return response, nil
-}
+	logger.Info("pipeline output",
+		slog.String("output", out.String()))
 
-func main() {
-	lambda.Start(ServiceHandler)
+	logger.Info("Processing complete")
 }
