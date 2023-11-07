@@ -6,3 +6,4 @@ work
 libjansi-64.so
 data
 .DS_Store
+*.env
