@@ -9,7 +9,10 @@ RUN wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt
 RUN echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list
 RUN apt-get update
 # R program dependencies
-RUN apt-get install -y  libudunits2-dev libgdal-dev libgeos-dev libproj-dev && apt-get -y install libnlopt-dev && apt-get -y install pkg-config && apt-get -y install gdal-bin && apt-get install -y libgdal-dev
+RUN apt-get install -y  libudunits2-dev
+RUN apt-get install -y libgeos-dev 
+RUN apt-get install -y libproj-dev 
+RUN apt-get -y install libnlopt-dev && apt-get -y install pkg-config && apt-get -y install gdal-bin && apt-get install -y libgdal-dev
 # next flow dependencies
 RUN apt-get -y install temurin-17-jdk
 
